@@ -1,0 +1,51 @@
+IF object_id('tempdb..##DBRoles') IS NOT NULL DROP TABLE ##DBRoles
+
+    -- Create temp table to store the data in
+    CREATE TABLE ##DBRoles (
+        DBName sysname NULL,
+        UserPrincipalId int NULL,
+		UserName sysname NULL,
+        RoleName sysname NULL,
+        DropScript nvarchar(max) NULL,
+        AddScript nvarchar(max) NULL
+        )
+
+DECLARE 
+@Collation nvarchar(75),
+@DBName sysname,
+@sql nvarchar(max),
+@use nvarchar(500)
+
+SET @Collation = N' COLLATE ' + CAST(SERVERPROPERTY('Collation') AS nvarchar(50))
+SET @DBName = DB_NAME()
+
+SET @use = N'USE ' + QUOTENAME(@DBName) + N';' + NCHAR(13)
+
+SET @sql =  
+    N'SELECT ' + CASE WHEN @DBName = 'All' THEN N'@AllDBNames' ELSE N'''' + @DBName + N'''' END + N' AS DBName,' + 
+    N' Users.principal_id AS UserPrincipalId, Users.name AS UserName, Roles.name AS RoleName, ' + NCHAR(13) + 
+    CASE WHEN @DBName = 'All' THEN N'   ''USE '' + QUOTENAME(@AllDBNames) + ''; '' + ' + NCHAR(13) ELSE N'' END + 
+    N'   CASE WHEN Users.is_fixed_role = 0 AND Users.name <> ''dbo'' THEN ' + NCHAR(13) + 
+    N'   ''EXEC sp_droprolemember @rolename = ''+QUOTENAME(Roles.name' + @Collation + 
+                N','''''''')+'', @membername = ''+QUOTENAME(CASE WHEN Users.name = ''dbo'' THEN NULL
+                ELSE Users.name END' + @Collation + 
+                N','''''''')+'';'' END AS DropScript, ' + NCHAR(13) + 
+    CASE WHEN @DBName = 'All' THEN N'   ''USE '' + QUOTENAME(@AllDBNames) + ''; '' + ' + NCHAR(13) ELSE N'' END + 
+    N'   CASE WHEN Users.is_fixed_role = 0 AND Users.name <> ''dbo'' THEN ' + NCHAR(13) + 
+    N'   ''EXEC sp_addrolemember @rolename = ''+QUOTENAME(Roles.name' + @Collation + 
+                N','''''''')+'', @membername = ''+QUOTENAME(CASE WHEN Users.name = ''dbo'' THEN NULL
+                ELSE Users.name END' + @Collation + 
+                N','''''''')+'';'' END AS AddScript ' + NCHAR(13) + 
+    N'FROM sys.database_role_members RoleMembers ' + NCHAR(13) + 
+    N'JOIN sys.database_principals Users ' + NCHAR(13) + 
+    N'   ON RoleMembers.member_principal_id = Users.principal_id ' + NCHAR(13) + 
+    N'JOIN sys.database_principals Roles ' + NCHAR(13) + 
+    N'   ON RoleMembers.role_principal_id = Roles.principal_id ' + NCHAR(13) + 
+    N'WHERE 1=1 '
+
+SET @sql =  @use + NCHAR(13) + 'INSERT INTO ##DBRoles ' + NCHAR(13) + @sql
+    
+EXEC sp_executesql @sql
+
+SELECT AddScript 
+FROM ##DBRoles where UserName<>'dbo' ORDER BY DBName, UserName, RoleName
